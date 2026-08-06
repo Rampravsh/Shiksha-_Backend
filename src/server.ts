@@ -19,7 +19,7 @@ const startServer = async () => {
     const app = createApp();
 
     // 4. Start HTTP Server Listener
-    const server = app.listen(env.PORT, () => {
+    const server = app.listen(env.PORT, "0.0.0.0", () => {
       logger.info(
         `🚀 Shiksha+ Backend API running in [${env.NODE_ENV}] mode on port ${env.PORT}`,
       );
