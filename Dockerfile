@@ -48,5 +48,5 @@ COPY --chown=node:node --from=builder /app/openapi.yaml ./openapi.yaml
 
 EXPOSE 5000
 
-# Resolve any failed initial migration attempt automatically, deploy migrations, then launch server
-CMD ["sh", "-c", "npx prisma migrate resolve --rolled-back 20260807000000_init || true && npx prisma migrate deploy && node dist/server.js"]
+# Execute database migrations on startup then launch HTTP server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
