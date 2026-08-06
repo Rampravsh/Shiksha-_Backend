@@ -18,9 +18,6 @@
     "seed": "tsx prisma/seed.ts",
     "test": "jest"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "keywords": [
     "shiksha",
     "express",

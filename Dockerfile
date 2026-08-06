@@ -17,6 +17,9 @@ COPY tsconfig*.json ./
 COPY openapi.yaml ./
 COPY src ./src
 
+# Set placeholder DATABASE_URL for Prisma Client generation during build
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public"
+
 # Generate Prisma Client & compile TypeScript
 RUN npx prisma generate
 RUN npm run build
