@@ -1,0 +1,16 @@
+export const DEFAULT_PAGE_LIMIT = 10;
+export const MAX_PAGE_LIMIT = 100;
+
+export const TOKEN_TYPES = {
+  ACCESS: "ACCESS",
+  REFRESH: "REFRESH",
+  RESET_PASSWORD: "RESET_PASSWORD",
+  VERIFY_EMAIL: "VERIFY_EMAIL",
+} as const;
+
+export const SYSTEM_STATUS = {
+  ACTIVE: "ACTIVE",
+  INACTIVE: "INACTIVE",
+  PENDING: "PENDING",
+  BLOCKED: "BLOCKED",
+} as const;

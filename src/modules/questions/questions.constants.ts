@@ -1,0 +1,16 @@
+export const QUESTIONS_MESSAGES = {
+  CREATED: "Question created successfully in Question Bank",
+  UPDATED: "Question updated successfully",
+  DELETED: "Question deleted/archived successfully",
+  FETCHED_ALL: "Questions fetched successfully from Question Bank",
+  FETCHED_ONE: "Question details fetched successfully",
+  NOT_FOUND: "Question not found in Question Bank",
+  EXAM_NOT_FOUND: "Associated exam not found",
+  SUBJECT_NOT_FOUND: "Associated subject not found",
+  TOPIC_NOT_FOUND: "Associated topic not found",
+  DUPLICATE_DETECTED: "A duplicate question with identical text already exists",
+  BULK_CREATED: "Bulk questions imported successfully into Question Bank",
+  PUBLISHED: "Question published successfully",
+  ARCHIVED: "Question archived successfully",
+  STATUS_UPDATED: "Question status updated successfully",
+} as const;

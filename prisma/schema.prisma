@@ -1,0 +1,551 @@
+// ==========================================
+// SHIKSHA+ BACKEND — PRODUCTION DATABASE SCHEMA
+// ==========================================
+// Platform : Government Exam Preparation (India)
+// Database : PostgreSQL
+// ORM      : Prisma
+// Auth     : Firebase Authentication ONLY
+// Scale    : 100,000+ users
+// ==========================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum Language {
+  ENGLISH
+  HINDI
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionType {
+  MCQ
+  MULTIPLE_SELECT
+  TRUE_FALSE
+  ASSERTION_REASON
+}
+
+enum QuestionSource {
+  PYQ
+  MOCK
+  CUSTOM
+}
+
+enum QuestionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+enum ExamCategoryType {
+  NATIONAL
+  STATE
+}
+
+enum NotificationTarget {
+  ALL_USERS
+  SPECIFIC_USERS
+}
+
+enum NotificationType {
+  GENERAL
+  CURRENT_AFFAIRS
+  MOCK_TEST
+  SYSTEM
+}
+
+// ==========================================
+// MASTER TABLES
+// ==========================================
+
+/// Indian states and union territories — used for user profiles,
+/// state-level exams, and state-rank leaderboard computation.
+model State {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  code      String   @unique @db.VarChar(5)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users        User[]
+  exams        Exam[]
+  leaderboards Leaderboard[]
+
+  @@index([code])
+  @@map("states")
+}
+
+/// Top-level grouping for exam categories.
+/// Example: "Competitive Exams", "Teaching Exams"
+model Category {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  iconUrl     String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  examCategories ExamCategory[]
+
+  @@index([slug])
+  @@index([isActive, sortOrder])
+  @@map("categories")
+}
+
+/// Sub-grouping under a Category. Distinguishes NATIONAL vs STATE exams.
+/// Example: "SSC", "UPSC", "State PSC"
+model ExamCategory {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String           @unique
+  type        ExamCategoryType @default(NATIONAL)
+  categoryId  String           @db.Uuid
+  description String?
+  iconUrl     String?
+  isActive    Boolean          @default(true)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // Relations
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  exams    Exam[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([type])
+  @@index([isActive, sortOrder])
+  @@map("exam_categories")
+}
+
+/// Individual exams within an ExamCategory.
+/// Example: "SSC CGL", "UPSC Prelims", "RAS"
+model Exam {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String
+  slug           String   @unique
+  examCategoryId String   @db.Uuid
+  stateId        String?  @db.Uuid
+  description    String?
+  iconUrl        String?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  examCategory ExamCategory @relation(fields: [examCategoryId], references: [id], onDelete: Cascade)
+  state        State?       @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  subjects     Subject[]
+  questions    Question[]
+  testPapers   TestPaper[]
+
+  @@index([examCategoryId])
+  @@index([stateId])
+  @@index([slug])
+  @@index([isActive, sortOrder])
+  @@map("exams")
+}
+
+/// Subjects under an Exam.
+/// Example: "Quantitative Aptitude", "General Science"
+model Subject {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  examId    String   @db.Uuid
+  iconUrl   String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  exam      Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  topics    Topic[]
+  questions Question[]
+
+  @@index([examId])
+  @@index([slug])
+  @@index([isActive, sortOrder])
+  @@map("subjects")
+}
+
+/// Topics under a Subject.
+/// Example: "Percentage", "Indian Polity"
+model Topic {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  subjectId   String   @db.Uuid
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([subjectId])
+  @@index([slug])
+  @@index([isActive, sortOrder])
+  @@map("topics")
+}
+
+// ==========================================
+// MAIN TABLES
+// ==========================================
+
+/// Registered users. Guest users NEVER create records here.
+/// Firebase UID is the ONLY identity bridge between Firebase Auth and this table.
+model User {
+  id          String    @id @default(uuid()) @db.Uuid
+  firebaseUid String    @unique
+  email       String    @unique
+  fullName    String
+  avatarUrl   String?
+  role        Role      @default(USER)
+  phone       String?   @db.VarChar(15)
+  dateOfBirth DateTime? @db.Date
+  stateId     String?   @db.Uuid
+  bio         String?
+  fcmToken    String?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  state             State?           @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  testAttempts      TestAttempt[]
+  leaderboards      Leaderboard[]
+  notificationsSent Notification[]   @relation("NotificationCreator")
+  uploads           Upload[]
+  currentAffairs    CurrentAffair[]
+  refreshSessions   RefreshSession[]
+
+  @@index([firebaseUid])
+  @@index([email])
+  @@index([role])
+  @@index([stateId])
+  @@index([isActive])
+  @@map("users")
+}
+
+/// Tracked refresh token sessions. One device = one session.
+/// Stores SHA-256 hashed refresh token for security & revocation.
+model RefreshSession {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  hashedRefreshToken String    @unique
+  deviceId           String?
+  deviceName         String?
+  platform           String?
+  ipAddress          String?
+  userAgent          String?
+  expiresAt          DateTime
+  lastUsedAt         DateTime  @default(now())
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([hashedRefreshToken])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
+
+/// Central Question Bank. Single source of truth for all questions.
+/// A question belongs to one Exam → one Subject → optionally one Topic.
+/// Questions are NEVER duplicated; they are linked to tests via test_questions.
+model Question {
+  id              String         @id @default(uuid()) @db.Uuid
+  textEn          String
+  textHi          String?
+  explanationEn   String?
+  explanationHi   String?
+  type            QuestionType   @default(MCQ)
+  source          QuestionSource @default(CUSTOM)
+  status          QuestionStatus @default(DRAFT)
+  difficulty      Difficulty     @default(MEDIUM)
+  examId          String         @db.Uuid
+  subjectId       String         @db.Uuid
+  topicId         String?        @db.Uuid
+  options         Json           @db.JsonB
+  correctAnswer   Json           @db.JsonB
+  marks           Float          @default(1.0)
+  negativeMarks   Float          @default(0.0)
+  questionImageEn String?
+  questionImageHi String?
+  solutionImageEn String?
+  solutionImageHi String?
+  yearAsked       Int?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations
+  exam           Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject        Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic          Topic?          @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  testQuestions  TestQuestion[]
+  attemptAnswers AttemptAnswer[]
+
+  @@index([examId])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([status])
+  @@index([type])
+  @@index([source])
+  @@index([difficulty])
+  @@index([examId, subjectId, topicId])
+  @@index([status, examId])
+  @@map("questions")
+}
+
+/// Admin-created test papers. Tests do NOT own questions.
+/// Questions are linked via the test_questions junction table.
+model TestPaper {
+  id             String    @id @default(uuid()) @db.Uuid
+  title          String
+  slug           String    @unique
+  examId         String    @db.Uuid
+  description    String?
+  durationMins   Int       @default(60)
+  totalMarks     Float     @default(100.0)
+  positiveMarks  Float     @default(1.0)
+  negativeMarks  Float     @default(0.0)
+  totalQuestions Int       @default(0)
+  language       Language  @default(ENGLISH)
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  exam          Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  testQuestions TestQuestion[]
+  testAttempts  TestAttempt[]
+  leaderboards  Leaderboard[]
+
+  @@index([examId])
+  @@index([slug])
+  @@index([isPublished])
+  @@index([examId, isPublished])
+  @@map("test_papers")
+}
+
+/// Junction table: links questions to test papers.
+/// Enforces uniqueness so a question cannot appear twice in the same test.
+model TestQuestion {
+  id          String   @id @default(uuid()) @db.Uuid
+  testPaperId String   @db.Uuid
+  questionId  String   @db.Uuid
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  testPaper TestPaper @relation(fields: [testPaperId], references: [id], onDelete: Cascade)
+  question  Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([testPaperId, questionId])
+  @@index([testPaperId])
+  @@index([questionId])
+  @@map("test_questions")
+}
+
+/// Records a logged-in user's attempt at a test paper.
+/// Guest users NEVER create attempt records.
+model TestAttempt {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @db.Uuid
+  testPaperId    String        @db.Uuid
+  status         AttemptStatus @default(IN_PROGRESS)
+  startedAt      DateTime      @default(now())
+  submittedAt    DateTime?
+  timeTakenSecs  Int           @default(0)
+  totalQuestions Int           @default(0)
+  totalAttempted Int           @default(0)
+  totalCorrect   Int           @default(0)
+  totalIncorrect Int           @default(0)
+  totalSkipped   Int           @default(0)
+  score          Float         @default(0.0)
+  maxScore       Float         @default(0.0)
+  accuracy       Float         @default(0.0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testPaper      TestPaper       @relation(fields: [testPaperId], references: [id], onDelete: Cascade)
+  attemptAnswers AttemptAnswer[]
+
+  @@index([userId])
+  @@index([testPaperId])
+  @@index([status])
+  @@index([userId, testPaperId])
+  @@index([userId, status])
+  @@map("test_attempts")
+}
+
+/// Individual answer record within a test attempt.
+/// Tracks selected option(s), correctness, marks, time, and review flag.
+model AttemptAnswer {
+  id                String      @id @default(uuid()) @db.Uuid
+  testAttemptId     String      @db.Uuid
+  questionId        String      @db.Uuid
+  selectedAnswer    Json?       @db.JsonB
+  isCorrect         Boolean     @default(false)
+  isSkipped         Boolean     @default(true)
+  isMarkedForReview Boolean     @default(false)
+  marksAwarded      Float       @default(0.0)
+  timeTakenSecs     Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  // Relations
+  testAttempt TestAttempt @relation(fields: [testAttemptId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([testAttemptId, questionId])
+  @@index([testAttemptId])
+  @@index([questionId])
+  @@map("attempt_answers")
+}
+
+/// Leaderboard entry for a test paper.
+/// Generated after test submission. Only logged-in users appear.
+/// Supports AIR Rank, State Rank, Category Rank, and Percentile.
+model Leaderboard {
+  id             String   @id @default(uuid()) @db.Uuid
+  testPaperId    String   @db.Uuid
+  userId         String   @db.Uuid
+  stateId        String?  @db.Uuid
+  score          Float
+  totalCorrect   Int      @default(0)
+  totalIncorrect Int      @default(0)
+  timeTakenSecs  Int      @default(0)
+  submittedAt    DateTime
+  airRank        Int?
+  stateRank      Int?
+  categoryRank   Int?
+  percentile     Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  testPaper TestPaper @relation(fields: [testPaperId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state     State?    @relation(fields: [stateId], references: [id], onDelete: SetNull)
+
+  @@unique([testPaperId, userId])
+  @@index([testPaperId])
+  @@index([userId])
+  @@index([stateId])
+  @@index([testPaperId, score(sort: Desc), totalCorrect(sort: Desc)])
+  @@index([testPaperId, stateId, score(sort: Desc)])
+  @@map("leaderboards")
+}
+
+/// Current affairs published by admin.
+model CurrentAffair {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String
+  slug        String    @unique
+  description String
+  imageUrl    String?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([slug])
+  @@index([isPublished, publishedAt(sort: Desc)])
+  @@index([createdById])
+  @@map("current_affairs")
+}
+
+/// Cloudinary upload metadata. Stores only references, not files.
+model Upload {
+  id           String   @id @default(uuid()) @db.Uuid
+  publicId     String   @unique
+  url          String
+  secureUrl    String
+  format       String   @db.VarChar(10)
+  width        Int?
+  height       Int?
+  bytes        Int      @default(0)
+  folder       String?
+  uploadedById String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  // Relations
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([publicId])
+  @@index([uploadedById])
+  @@index([folder])
+  @@map("uploads")
+}
+
+/// Notification history stored in database.
+/// Delivery is handled by Firebase Cloud Messaging.
+model Notification {
+  id          String             @id @default(uuid()) @db.Uuid
+  title       String
+  body        String
+  imageUrl    String?
+  target      NotificationTarget @default(ALL_USERS)
+  type        NotificationType   @default(GENERAL)
+  data        Json?              @db.JsonB
+  createdById String             @db.Uuid
+  createdAt   DateTime           @default(now())
+
+  // Relations
+  createdBy User @relation("NotificationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([target])
+  @@index([createdById])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}

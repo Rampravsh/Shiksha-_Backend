@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  # --------------------------------------------------
+  # POSTGRESQL DATABASE SERVICE
+  # --------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: shiksha_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shiksha_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shiksha_secure_password_123}
+      POSTGRES_DB: ${POSTGRES_DB:-shiksha_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-shiksha_user} -d ${POSTGRES_DB:-shiksha_db}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shiksha_network
+
+  # --------------------------------------------------
+  # SHIKSHA+ BACKEND API SERVICE
+  # --------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shiksha_api
+    restart: always
+    ports:
+      - "${PORT:-5000}:5000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 5000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-shiksha_user}:${POSTGRES_PASSWORD:-shiksha_secure_password_123}@postgres:5432/${POSTGRES_DB:-shiksha_db}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - shiksha_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  shiksha_network:
+    driver: bridge

@@ -1,0 +1,2112 @@
+openapi: 3.1.0
+info:
+  title: Shiksha+ Backend API
+  description: >
+    Production-grade RESTful API specification for the Shiksha+ Government Exam Preparation Platform.
+    Designed for high scalability, Firebase authentication, role-based access control (ADMIN/USER),
+    and comprehensive domain management.
+  version: 1.0.0
+  termsOfService: https://shiksha.app/terms
+  contact:
+    name: Shiksha+ Engineering Team
+    email: api-support@shiksha.app
+    url: https://shiksha.app
+  license:
+    name: Proprietary / Commercial
+    url: https://shiksha.app/license
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local Development Server
+  - url: https://staging-api.shiksha.app/api/v1
+    description: Staging Environment
+  - url: https://api.shiksha.app/api/v1
+    description: Production Environment
+
+tags:
+  - name: Health
+    description: System health check and status endpoints
+  - name: Auth
+    description: Firebase authentication and session management
+  - name: Users
+    description: User profile and admin user management
+  - name: States
+    description: Indian states and union territories management
+  - name: Categories
+    description: Top-level exam categories management
+  - name: Exam Categories
+    description: Sub-categories (National & State level) management
+  - name: Exams
+    description: Competitive exam series management
+  - name: Subjects
+    description: Exam subjects management
+  - name: Topics
+    description: Subject micro-topics management
+  - name: Questions
+    description: Central Question Bank management
+  - name: Uploads
+    description: Cloudinary image and file uploads management
+  - name: Test Papers
+    description: Test papers and mock exam series management
+  - name: Test Questions
+    description: Test paper question mapping and sequence management
+  - name: Test Attempts
+    description: Student exam attempts and progress lifecycle management
+  - name: Attempt Answers
+    description: Question answer choices, time tracking, and review flags
+  - name: Leaderboards
+    description: Deterministic AIR, state rank, and percentile computations
+  - name: Profile
+    description: Current logged-in user profile, avatar, and statistics
+  - name: Dashboard
+    description: Dynamic student performance and admin system aggregation
+  - name: Current Affairs
+    description: Admin current affairs publishing and public reading
+  - name: Notifications
+    description: Targeted FCM notification creation and delivery history
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: API Health Check
+      description: Returns server uptime, operational status, and current timestamp.
+      security: []
+      responses:
+        "200":
+          description: Server is healthy and operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Shiksha+ API v1 is healthy and operational
+                  data:
+                    type: object
+                    properties:
+                      uptime:
+                        type: number
+                        example: 120.45
+                      timestamp:
+                        type: string
+                        example: "2026-08-07T00:00:00.000Z"
+
+  /auth/firebase-login:
+    post:
+      tags:
+        - Auth
+      summary: Authenticate with Firebase ID Token
+      description: Verifies Firebase ID token (Google Login or Firebase Auth), upserts PostgreSQL user record, and issues backend JWT tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idToken
+              properties:
+                idToken:
+                  type: string
+                  description: Firebase ID Token obtained from client SDK
+                deviceId:
+                  type: string
+                  example: device-uuid-123
+                deviceName:
+                  type: string
+                  example: Chrome on Windows
+                platform:
+                  type: string
+                  example: Web
+      responses:
+        "200":
+          description: User authenticated successfully
+        "401":
+          description: Invalid or expired Firebase ID token
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Refresh Access Token
+      description: Validates refresh token from HttpOnly cookie or body, performs token rotation, and updates session.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          description: Tokens refreshed and rotated successfully
+        "401":
+          description: Invalid, expired, or revoked refresh token
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout Current Session
+      description: Revokes current device session and clears HttpOnly refresh cookie.
+      security: []
+      responses:
+        "200":
+          description: Logged out successfully
+
+  /auth/logout-all:
+    post:
+      tags:
+        - Auth
+      summary: Logout All Devices
+      description: Revokes all active refresh sessions for the authenticated user across all devices.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out from all devices successfully
+        "401":
+          description: Unauthorized
+
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Get Current User Session
+      description: Retrieves profile details of the currently authenticated user.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User session fetched
+        "401":
+          description: Unauthorized
+
+  /auth/account:
+    delete:
+      tags:
+        - Auth
+      summary: Delete Own Account
+      description: Permanently deletes user account from Firebase Auth and PostgreSQL.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Account deleted successfully
+
+  /auth/admin/users/{id}/disable:
+    patch:
+      tags:
+        - Auth
+      summary: Admin Disable User
+      description: Admin disables a user account and revokes all active sessions.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User disabled successfully
+        "403":
+          description: Admin access required
+
+  /auth/admin/users/{id}/enable:
+    patch:
+      tags:
+        - Auth
+      summary: Admin Enable User
+      description: Admin re-enables a disabled user account.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User enabled successfully
+        "403":
+          description: Admin access required
+
+  /users/profile:
+    get:
+      tags:
+        - Users
+      summary: Get User Profile
+      description: Returns full profile of logged in user including State details.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Profile fetched successfully
+    patch:
+      tags:
+        - Users
+      summary: Update User Profile
+      description: Updates fullName, phone, dateOfBirth, stateId, and bio.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                phone:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  format: date
+                stateId:
+                  type: string
+                  format: uuid
+                bio:
+                  type: string
+      responses:
+        "200":
+          description: Profile updated successfully
+
+  /users/avatar:
+    post:
+      tags:
+        - Users
+      summary: Upload & Update User Avatar
+      description: Uploads avatar image file directly to Cloudinary (or accepts avatarUrl string), records metadata in uploads table, and updates user avatarUrl.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Avatar image file (JPEG, PNG, WebP)
+          application/json:
+            schema:
+              type: object
+              properties:
+                avatarUrl:
+                  type: string
+                  format: uri
+      responses:
+        "200":
+          description: Avatar uploaded and updated successfully
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List / Search Users (Admin)
+      description: Search and paginate all registered users with role and status filters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [ADMIN, USER]
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Users list fetched
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get User Details (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User details fetched
+    delete:
+      tags:
+        - Users
+      summary: Admin Delete User
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User deleted successfully
+
+  /users/{id}/activate:
+    patch:
+      tags:
+        - Users
+      summary: Activate User Account (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User activated successfully
+
+  /users/{id}/deactivate:
+    patch:
+      tags:
+        - Users
+      summary: Deactivate User Account (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User deactivated successfully
+
+  /states:
+    get:
+      tags:
+        - States
+      summary: List All States & Union Territories
+      description: Returns active Indian states and UTs sorted alphabetically.
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: States fetched successfully
+    post:
+      tags:
+        - States
+      summary: Create State (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: Delhi
+                code:
+                  type: string
+                  example: DL
+      responses:
+        "201":
+          description: State created successfully
+
+  /states/{id}:
+    get:
+      tags:
+        - States
+      summary: Get State Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State fetched successfully
+    put:
+      tags:
+        - States
+      summary: Update State (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                isActive:
+                  type: boolean
+      responses:
+        "200":
+          description: State updated successfully
+    delete:
+      tags:
+        - States
+      summary: Delete State (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: State deleted successfully
+
+  /categories:
+    get:
+      tags:
+        - Categories
+      summary: List Categories
+      description: List top-level exam categories sorted by sortOrder and name.
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Categories fetched successfully
+    post:
+      tags:
+        - Categories
+      summary: Create Category (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: Competitive Exams
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Category created successfully
+
+  /categories/{id}:
+    get:
+      tags:
+        - Categories
+      summary: Get Category Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Category fetched successfully
+    put:
+      tags:
+        - Categories
+      summary: Update Category (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+      responses:
+        "200":
+          description: Category updated successfully
+    delete:
+      tags:
+        - Categories
+      summary: Delete Category (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Category deleted successfully
+
+  /exam-categories:
+    get:
+      tags:
+        - Exam Categories
+      summary: List Exam Categories
+      description: List sub-categories filtered by NATIONAL / STATE type or categoryId.
+      security: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [NATIONAL, STATE]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam categories fetched successfully
+    post:
+      tags:
+        - Exam Categories
+      summary: Create Exam Category (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - categoryId
+              properties:
+                name:
+                  type: string
+                  example: SSC
+                categoryId:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  enum: [NATIONAL, STATE]
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Exam category created successfully
+
+  /exam-categories/{id}:
+    get:
+      tags:
+        - Exam Categories
+      summary: Get Exam Category Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam category fetched successfully
+    put:
+      tags:
+        - Exam Categories
+      summary: Update Exam Category (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                categoryId:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  enum: [NATIONAL, STATE]
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+      responses:
+        "200":
+          description: Exam category updated successfully
+    delete:
+      tags:
+        - Exam Categories
+      summary: Delete Exam Category (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam category deleted successfully
+
+  /exams:
+    get:
+      tags:
+        - Exams
+      summary: List / Search Exams
+      description: Search and paginate competitive exams by title, examCategoryId, stateId, or active status.
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: examCategoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: stateId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Exams list fetched successfully
+    post:
+      tags:
+        - Exams
+      summary: Create Exam (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - examCategoryId
+              properties:
+                title:
+                  type: string
+                  example: SSC CGL 2026
+                examCategoryId:
+                  type: string
+                  format: uuid
+                stateId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Exam created successfully
+
+  /exams/{id}:
+    get:
+      tags:
+        - Exams
+      summary: Get Exam Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam fetched successfully
+    put:
+      tags:
+        - Exams
+      summary: Update Exam (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                examCategoryId:
+                  type: string
+                  format: uuid
+                stateId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                iconUrl:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+      responses:
+        "200":
+          description: Exam updated successfully
+    delete:
+      tags:
+        - Exams
+      summary: Delete Exam (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam deleted successfully
+
+  /exams/{id}/activate:
+    patch:
+      tags:
+        - Exams
+      summary: Activate Exam (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam activated successfully
+
+  /exams/{id}/deactivate:
+    patch:
+      tags:
+        - Exams
+      summary: Deactivate Exam (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exam deactivated successfully
+
+  /subjects:
+    get:
+      tags:
+        - Subjects
+      summary: List / Search Subjects
+      description: Search and paginate subjects filtered by examId.
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: examId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Subjects fetched successfully
+    post:
+      tags:
+        - Subjects
+      summary: Create Subject (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - examId
+              properties:
+                name:
+                  type: string
+                  example: Quantitative Aptitude
+                examId:
+                  type: string
+                  format: uuid
+                iconUrl:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Subject created successfully
+
+  /subjects/{id}:
+    get:
+      tags:
+        - Subjects
+      summary: Get Subject Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subject fetched successfully
+    put:
+      tags:
+        - Subjects
+      summary: Update Subject (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                examId:
+                  type: string
+                  format: uuid
+                iconUrl:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+      responses:
+        "200":
+          description: Subject updated successfully
+    delete:
+      tags:
+        - Subjects
+      summary: Delete Subject (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subject deleted successfully
+
+  /topics:
+    get:
+      tags:
+        - Topics
+      summary: List / Search Topics
+      description: Search and paginate topics filtered by subjectId.
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Topics fetched successfully
+    post:
+      tags:
+        - Topics
+      summary: Create Topic (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - subjectId
+              properties:
+                name:
+                  type: string
+                  example: Percentage
+                subjectId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                sortOrder:
+                  type: integer
+      responses:
+        "201":
+          description: Topic created successfully
+
+  /topics/{id}:
+    get:
+      tags:
+        - Topics
+      summary: Get Topic Details
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Topic fetched successfully
+    put:
+      tags:
+        - Topics
+      summary: Update Topic (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                subjectId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                isActive:
+                  type: boolean
+                sortOrder:
+                  type: integer
+      responses:
+        "200":
+          description: Topic updated successfully
+    delete:
+      tags:
+        - Topics
+      summary: Delete Topic (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Topic deleted successfully
+
+  /questions:
+    get:
+      tags:
+        - Questions
+      summary: Search Question Bank
+      description: Search, filter, and paginate Central Question Bank by exam, subject, topic, difficulty, type, status, and year.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: examId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: subjectId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: topicId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [MCQ, MULTIPLE_SELECT, TRUE_FALSE, ASSERTION_REASON]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [PYQ, MOCK, CUSTOM]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, PUBLISHED, ARCHIVED]
+        - name: difficulty
+          in: query
+          schema:
+            type: string
+            enum: [EASY, MEDIUM, HARD]
+        - name: yearAsked
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Questions fetched successfully
+    post:
+      tags:
+        - Questions
+      summary: Create Question (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - textEn
+                - examId
+                - subjectId
+                - options
+                - correctAnswer
+              properties:
+                textEn:
+                  type: string
+                  example: What is the capital of India?
+                textHi:
+                  type: string
+                explanationEn:
+                  type: string
+                explanationHi:
+                  type: string
+                type:
+                  type: string
+                  enum: [MCQ, MULTIPLE_SELECT, TRUE_FALSE, ASSERTION_REASON]
+                source:
+                  type: string
+                  enum: [PYQ, MOCK, CUSTOM]
+                status:
+                  type: string
+                  enum: [DRAFT, PUBLISHED, ARCHIVED]
+                difficulty:
+                  type: string
+                  enum: [EASY, MEDIUM, HARD]
+                examId:
+                  type: string
+                  format: uuid
+                subjectId:
+                  type: string
+                  format: uuid
+                topicId:
+                  type: string
+                  format: uuid
+                options:
+                  type: array
+                  items:
+                    type: object
+                correctAnswer:
+                  type: string
+                marks:
+                  type: number
+                  example: 1.0
+                negativeMarks:
+                  type: number
+                  example: 0.25
+                yearAsked:
+                  type: integer
+                  example: 2024
+      responses:
+        "201":
+          description: Question created successfully
+
+  /questions/bulk:
+    post:
+      tags:
+        - Questions
+      summary: Bulk Import Questions (Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - questions
+              properties:
+                questions:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "201":
+          description: Bulk questions imported successfully
+
+  /questions/{id}:
+    get:
+      tags:
+        - Questions
+      summary: Get Question Item Details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Question details fetched successfully
+    put:
+      tags:
+        - Questions
+      summary: Update Question (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                textEn:
+                  type: string
+                textHi:
+                  type: string
+                explanationEn:
+                  type: string
+                explanationHi:
+                  type: string
+                status:
+                  type: string
+                  enum: [DRAFT, PUBLISHED, ARCHIVED]
+                difficulty:
+                  type: string
+                  enum: [EASY, MEDIUM, HARD]
+      responses:
+        "200":
+          description: Question updated successfully
+    delete:
+      tags:
+        - Questions
+      summary: Delete Question (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Question deleted successfully
+
+  /questions/{id}/publish:
+    patch:
+      tags:
+        - Questions
+      summary: Publish Question (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Question published successfully
+
+  /questions/{id}/archive:
+    patch:
+      tags:
+        - Questions
+      summary: Archive Question (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Question archived successfully
+
+  /questions/{id}/draft:
+    patch:
+      tags:
+        - Questions
+      summary: Revert Question to Draft (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Question status set to DRAFT
+
+  /uploads/image:
+    post:
+      tags:
+        - Uploads
+      summary: Upload Media Image File
+      description: Uploads image file (JPEG, PNG, WebP) directly to Cloudinary and returns metadata.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Media file to upload
+                folder:
+                  type: string
+                  example: shiksha/questions
+      responses:
+        "201":
+          description: File uploaded successfully
+
+  /uploads:
+    get:
+      tags:
+        - Uploads
+      summary: List Uploaded Files (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: folder
+          in: query
+          schema:
+            type: string
+        - name: uploadedById
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Uploads list fetched
+
+  /uploads/{id}:
+    get:
+      tags:
+        - Uploads
+      summary: Get Upload Asset Details (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upload details fetched
+    delete:
+      tags:
+        - Uploads
+      summary: Delete Upload Asset (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upload asset deleted successfully
+
+  /test-papers:
+    get:
+      tags:
+        - Test Papers
+      summary: List Test Papers
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: examId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test papers list returned successfully
+    post:
+      tags:
+        - Test Papers
+      summary: Create Test Paper (Admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Test paper created successfully
+
+  /test-papers/{id}:
+    get:
+      tags:
+        - Test Papers
+      summary: Get Test Paper Details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test paper details returned successfully
+    put:
+      tags:
+        - Test Papers
+      summary: Update Test Paper (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test paper updated successfully
+    delete:
+      tags:
+        - Test Papers
+      summary: Delete Test Paper (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test paper deleted successfully
+
+  /test-papers/{id}/publish:
+    patch:
+      tags:
+        - Test Papers
+      summary: Publish Test Paper (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test paper published successfully
+
+  /test-papers/{id}/clone:
+    post:
+      tags:
+        - Test Papers
+      summary: Clone Test Paper (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Test paper cloned successfully
+
+  /test-papers/{testPaperId}/questions:
+    get:
+      tags:
+        - Test Questions
+      summary: Get Test Questions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: testPaperId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test questions list returned
+    post:
+      tags:
+        - Test Questions
+      summary: Add Question To Test (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: testPaperId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Question added to test paper
+
+  /attempts/start:
+    post:
+      tags:
+        - Test Attempts
+      summary: Start Test Attempt
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Test attempt started successfully
+
+  /attempts/my-history:
+    get:
+      tags:
+        - Test Attempts
+      summary: Get My Attempt History
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Attempt history returned
+
+  /attempts/{id}:
+    get:
+      tags:
+        - Test Attempts
+      summary: Get Attempt Details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attempt details returned
+
+  /attempts/{id}/submit:
+    post:
+      tags:
+        - Test Attempts
+      summary: Submit Test Attempt
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attempt submitted and evaluated
+
+  /attempts/{attemptId}/answers:
+    get:
+      tags:
+        - Attempt Answers
+      summary: Get Attempt Answers Progress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Answers list returned
+    post:
+      tags:
+        - Attempt Answers
+      summary: Save Answer Progress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Answer progress saved
+
+  /leaderboards/test/{testPaperId}:
+    get:
+      tags:
+        - Leaderboards
+      summary: Get Test Leaderboard Rankings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: testPaperId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Leaderboard rankings returned successfully
+
+  /profile:
+    get:
+      tags:
+        - Profile
+      summary: Get Logged In User Profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Profile details returned
+    patch:
+      tags:
+        - Profile
+      summary: Update Logged In User Profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Profile updated
+
+  /profile/avatar:
+    delete:
+      tags:
+        - Profile
+      summary: Remove Profile Avatar
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Avatar removed
+
+  /profile/statistics:
+    get:
+      tags:
+        - Profile
+      summary: Get Profile Statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Profile statistics returned
+
+  /dashboard/student:
+    get:
+      tags:
+        - Dashboard
+      summary: Get Student Dashboard
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Student dashboard metrics returned
+
+  /dashboard/admin:
+    get:
+      tags:
+        - Dashboard
+      summary: Get Admin Dashboard (Admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Admin dashboard counts returned
+
+  /current-affairs:
+    get:
+      tags:
+        - Current Affairs
+      summary: List Current Affairs
+      responses:
+        "200":
+          description: Current affairs list returned
+    post:
+      tags:
+        - Current Affairs
+      summary: Create Current Affair (Admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Current affair created
+
+  /current-affairs/{id}:
+    get:
+      tags:
+        - Current Affairs
+      summary: Get Current Affair Details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current affair details returned
+    put:
+      tags:
+        - Current Affairs
+      summary: Update Current Affair (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current affair updated
+    delete:
+      tags:
+        - Current Affairs
+      summary: Delete Current Affair (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current affair deleted
+
+  /current-affairs/{id}/publish:
+    patch:
+      tags:
+        - Current Affairs
+      summary: Publish Current Affair (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current affair published
+
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: List Notifications
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notifications list returned
+    post:
+      tags:
+        - Notifications
+      summary: Create And Send Notification (Admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Notification created and FCM multicast dispatched
+
+  /notifications/{id}:
+    get:
+      tags:
+        - Notifications
+      summary: Get Notification Details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification details returned
+    delete:
+      tags:
+        - Notifications
+      summary: Delete Notification (Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification deleted
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness Probe
+      responses:
+        "200":
+          description: Application is live
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness Probe
+      responses:
+        "200":
+          description: Application readiness passed
+
+  /health/database:
+    get:
+      tags:
+        - Health
+      summary: Database Health Check
+      responses:
+        "200":
+          description: Database ping passed
+
+  /health/firebase:
+    get:
+      tags:
+        - Health
+      summary: Firebase SDK Health Check
+      responses:
+        "200":
+          description: Firebase configuration verified
+
+  /health/cloudinary:
+    get:
+      tags:
+        - Health
+      summary: Cloudinary Health Check
+      responses:
+        "200":
+          description: Cloudinary configuration verified
+
+  /health/system:
+    get:
+      tags:
+        - Health
+      summary: System Metrics Check
+      responses:
+        "200":
+          description: Memory and process metrics returned
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter Bearer access token to authenticate API requests.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - statusCode
+        - message
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          example: false
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: Invalid request parameters
+        errors:
+          type: array
+          items:
+            type: object
+          example: []
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-08-07T00:00:00.000Z"
+        requestId:
+          type: string
+          example: 123e4567-e89b-12d3-a456-426614174000
+
+security:
+  - bearerAuth: []
