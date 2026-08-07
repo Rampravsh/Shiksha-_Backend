@@ -24,6 +24,11 @@ export const createApp = (): Application => {
   // Trust proxy for rate limiter and headers behind AWS ALB/Nginx
   app.set("trust proxy", 1);
 
+  // Healthcheck for Railway / AWS ALB load balancers (bypasses rate limit)
+  app.get(["/health/live", "/api/v1/health/live"], (_req, res) => {
+    res.status(200).json({ status: "UP", uptime: process.uptime() });
+  });
+
   // Security Middleware
   app.use(requestIdMiddleware);
   app.use(helmetMiddleware);
