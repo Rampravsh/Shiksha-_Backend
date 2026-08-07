@@ -9,9 +9,9 @@ const envSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   PORT: z
-    .string()
-    .transform((val) => parseInt(val, 10))
-    .default("5000"),
+    .union([z.string(), z.number()])
+    .transform((val) => (typeof val === "number" ? val : parseInt(val, 10)))
+    .default(5000),
   APP_NAME: z.string().default("shiksha-api"),
   API_PREFIX: z.string().default("/api/v1"),
   CORS_ORIGIN: z.string().default("*"),
