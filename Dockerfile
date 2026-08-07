@@ -48,5 +48,5 @@ COPY --chown=node:node --from=builder /app/openapi.yaml ./openapi.yaml
 
 EXPOSE 5000
 
-# Execute database migrations on startup then launch HTTP server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+# Launch HTTP server listener
+CMD ["node", "dist/server.js"]

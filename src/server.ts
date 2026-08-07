@@ -11,14 +11,10 @@ const startServer = async () => {
     initializeFirebase();
     initializeCloudinary();
 
-    // 2. Connect Database ORM
-    await prisma.$connect();
-    logger.info("🐘 Database connected successfully via Prisma");
-
-    // 3. Create Express Application Instance
+    // 2. Create Express Application Instance
     const app = createApp();
 
-    // 4. Start HTTP Server Listener
+    // 3. Start HTTP Server Listener immediately for zero-downtime healthchecks
     const server = app.listen(env.PORT, "0.0.0.0", () => {
       logger.info(
         `🚀 Shiksha+ Backend API running in [${env.NODE_ENV}] mode on port ${env.PORT}`,
@@ -27,6 +23,10 @@ const startServer = async () => {
         `📚 Swagger Documentation live at http://localhost:${env.PORT}/docs`,
       );
     });
+
+    // 4. Connect Database ORM
+    await prisma.$connect();
+    logger.info("🐘 Database connected successfully via Prisma");
 
     // Graceful Shutdown Handler
     const shutdown = async (signal: string) => {
